@@ -1,0 +1,19 @@
+[Unit]
+Description=Raspberry Pi HDMI MQTT display bridge
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/raspi-ha-display-control/mqtt.env
+ExecStartPre=/usr/bin/test -x /opt/raspi-ha-display-control/bin/display-control
+ExecStart=/usr/bin/python3 /opt/raspi-ha-display-control/mqtt/display-mqtt-bridge.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=default.target

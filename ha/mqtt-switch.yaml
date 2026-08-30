@@ -1,0 +1,16 @@
+# Add this under the MQTT integration configuration in Home Assistant.
+mqtt:
+  - switch:
+      name: "ラズパイ画面"
+      unique_id: raspi3_hdmi_display
+      command_topic: "home/raspi3/display/hdmi/set"
+      state_topic: "home/raspi3/display/hdmi/state"
+      availability_topic: "home/raspi3/display/availability"
+      payload_on: "ON"
+      payload_off: "OFF"
+      state_on: "ON"
+      state_off: "OFF"
+      payload_available: "online"
+      payload_not_available: "offline"
+      qos: 1
+      retain: false

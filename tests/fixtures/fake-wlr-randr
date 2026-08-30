@@ -1,0 +1,28 @@
+#!/bin/sh
+
+set -eu
+
+state_file="${FAKE_WLR_STATE_FILE:?FAKE_WLR_STATE_FILE is required}"
+
+if [ "$#" -eq 3 ] && [ "$1" = "--output" ]; then
+    case "$3" in
+        --on)
+            printf 'ON\n' > "$state_file"
+            exit 0
+            ;;
+        --off)
+            printf 'OFF\n' > "$state_file"
+            exit 0
+            ;;
+    esac
+fi
+
+case "$(cat "$state_file" 2>/dev/null || true)" in
+    ON)
+        printf 'HDMI-A-1 "Test display" (normal)\n'
+        printf '  1920x1080 60.000 Hz\n'
+        ;;
+    *)
+        printf 'NOOP-1 "Test display" (normal)\n'
+        ;;
+esac

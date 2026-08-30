@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# The production target uses util-linux flock. This no-op fixture is only for
+# exercising display-control's command and status paths on macOS CI hosts.
+exit 0

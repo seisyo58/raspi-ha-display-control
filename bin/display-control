@@ -1,0 +1,263 @@
+#!/bin/sh
+
+set -u
+
+OUTPUT_SELECTOR="${DISPLAY_OUTPUT:-auto}"
+OUTPUT_CACHE_FILE="${DISPLAY_OUTPUT_CACHE_FILE:-/run/user/1000/raspi-ha-display-control.output}"
+WLR_RANDR="${DISPLAY_CONTROL_WLR_RANDR:-/usr/bin/wlr-randr}"
+XDG_RUNTIME_DIR_VALUE="/run/user/1000"
+WAYLAND_DISPLAY_VALUE="wayland-0"
+LOCK_FILE="${DISPLAY_CONTROL_LOCK_FILE:-/run/user/1000/raspi-ha-display-control.lock}"
+RETRIES="${DISPLAY_CONTROL_RETRIES:-20}"
+RETRY_INTERVAL="${DISPLAY_CONTROL_RETRY_INTERVAL:-2}"
+
+usage() {
+    printf 'Usage: %s {on|off|status}\n' "$0" >&2
+}
+
+is_positive_integer() {
+    case "$1" in
+        ''|*[!0-9]*) return 1 ;;
+        0) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+if [ "$#" -ne 1 ]; then
+    usage
+    exit 64
+fi
+
+case "$WLR_RANDR" in
+    /*) ;;
+    *)
+        printf 'wlr-randr path must be absolute: %s\n' "$WLR_RANDR" >&2
+        exit 64
+        ;;
+esac
+
+if [ ! -x "$WLR_RANDR" ]; then
+    printf 'wlr-randr not found or not executable: %s\n' "$WLR_RANDR" >&2
+    exit 69
+fi
+
+if ! is_positive_integer "$RETRIES"; then
+    printf 'DISPLAY_CONTROL_RETRIES must be a positive integer\n' >&2
+    exit 64
+fi
+
+case "$RETRY_INTERVAL" in
+    ''|*[!0-9.]*|*.*.*|.)
+        printf 'DISPLAY_CONTROL_RETRY_INTERVAL must be a non-negative number\n' >&2
+        exit 64
+        ;;
+esac
+
+mkdir -p "$(dirname "$LOCK_FILE")" 2>/dev/null || {
+    printf 'cannot create lock directory for %s\n' "$LOCK_FILE" >&2
+    exit 73
+}
+
+if ! command -v flock >/dev/null 2>&1; then
+    printf 'flock is required to serialize display operations\n' >&2
+    exit 69
+fi
+
+run_wlr_randr() {
+    XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR_VALUE" \
+    WAYLAND_DISPLAY="$WAYLAND_DISPLAY_VALUE" \
+    "$WLR_RANDR" "$@"
+}
+
+valid_output_name() {
+    case "$1" in
+        ''|*/*|*' '*|*'	'*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+load_cached_output() {
+    if [ -r "$OUTPUT_CACHE_FILE" ]; then
+        cached_output=$(cat "$OUTPUT_CACHE_FILE")
+        if valid_output_name "$cached_output"; then
+            printf '%s\n' "$cached_output"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+save_cached_output() {
+    cached_output="$1"
+    printf '%s\n' "$cached_output" > "$OUTPUT_CACHE_FILE" 2>/dev/null || {
+        printf 'warning: cannot save detected output to %s\n' "$OUTPUT_CACHE_FILE" >&2
+    }
+}
+
+discover_output() {
+    discovery_file="$(mktemp "${TMPDIR:-/tmp}/display-control.XXXXXX")" || return 1
+    if ! run_wlr_randr >"$discovery_file" 2>/dev/null; then
+        rm -f "$discovery_file"
+        return 1
+    fi
+
+    discovered_outputs=$(awk '
+        $1 !~ /^NOOP-/ && $1 ~ /^(HDMI|DP|DVI|VGA|DSI|eDP|LVDS|Virtual)-[A-Za-z0-9._-]+$/ { print $1 }
+    ' "$discovery_file" | sort -u)
+    rm -f "$discovery_file"
+    discovered_count=$(printf '%s\n' "$discovered_outputs" | awk 'NF { count++ } END { print count + 0 }')
+
+    if [ "$discovered_count" -ne 1 ]; then
+        if [ "$discovered_count" -eq 0 ]; then
+            printf 'no physical display output was detected; set DISPLAY_OUTPUT explicitly\n' >&2
+        else
+            printf 'multiple display outputs were detected; set DISPLAY_OUTPUT explicitly\n' >&2
+        fi
+        return 1
+    fi
+
+    detected_output=$(printf '%s\n' "$discovered_outputs" | awk 'NF { print; exit }')
+    save_cached_output "$detected_output"
+    printf '%s\n' "$detected_output"
+}
+
+target_output() {
+    if [ "$OUTPUT_SELECTOR" = "auto" ]; then
+        load_cached_output || discover_output
+        return $?
+    fi
+    if ! valid_output_name "$OUTPUT_SELECTOR"; then
+        printf 'DISPLAY_OUTPUT must be a valid output name or auto\n' >&2
+        return 64
+    fi
+    printf '%s\n' "$OUTPUT_SELECTOR"
+}
+
+run_display_action() {
+    target=$(target_output) || return $?
+    run_wlr_randr --output "$target" "$1"
+}
+
+run_with_retry() {
+    action="$1"
+    attempt=1
+    while [ "$attempt" -le "$RETRIES" ]; do
+        if run_display_action "$action"; then
+            return 0
+        fi
+        if [ "$attempt" -lt "$RETRIES" ]; then
+            sleep "$RETRY_INTERVAL"
+        fi
+        attempt=$((attempt + 1))
+    done
+    return 1
+}
+
+status_from_output() {
+    output="$1"
+    output_name="$2"
+
+    # labwc may rename the disabled connector to NOOP-1. Treat that as OFF,
+    # but report an entirely missing connector as UNKNOWN (for example, a
+    # disconnected cable or an unavailable compositor).
+    if printf '%s\n' "$output" | awk -v output_name="$output_name" '
+        $1 == output_name { found = 1; exit }
+        END { exit !found }
+    '; then
+        printf 'ON\n'
+        return 0
+    fi
+
+    if printf '%s\n' "$output" | awk '
+        $1 == "NOOP-1" { found = 1 }
+        END { exit !found }
+    '; then
+        printf 'OFF\n'
+        return 0
+    fi
+
+    printf 'UNKNOWN\n'
+    return 1
+}
+
+status() {
+    output_file="$(mktemp "${TMPDIR:-/tmp}/display-control.XXXXXX")" || {
+        printf 'cannot create temporary file for status check\n' >&2
+        return 73
+    }
+    error_file="$(mktemp "${TMPDIR:-/tmp}/display-control.XXXXXX")" || {
+        rm -f "$output_file"
+        printf 'cannot create temporary file for status check\n' >&2
+        return 73
+    }
+    trap 'rm -f "$output_file" "$error_file"' EXIT HUP INT TERM
+
+    attempt=1
+    while [ "$attempt" -le "$RETRIES" ]; do
+        if run_wlr_randr >"$output_file" 2>"$error_file"; then
+            output="$(cat "$output_file")"
+            if [ "$OUTPUT_SELECTOR" = "auto" ]; then
+                if cached_output=$(load_cached_output); then
+                    status_from_output "$output" "$cached_output"
+                else
+                    detected_outputs=$(printf '%s\n' "$output" | awk '
+                        $1 !~ /^NOOP-/ && $1 ~ /^(HDMI|DP|DVI|VGA|DSI|eDP|LVDS|Virtual)-[A-Za-z0-9._-]+$/ { print $1 }
+                    ' | sort -u)
+                    detected_count=$(printf '%s\n' "$detected_outputs" | awk 'NF { count++ } END { print count + 0 }')
+                    if [ "$detected_count" -eq 1 ]; then
+                        detected_output=$(printf '%s\n' "$detected_outputs" | awk 'NF { print; exit }')
+                        save_cached_output "$detected_output"
+                        status_from_output "$output" "$detected_output"
+                    else
+                        printf 'UNKNOWN\n'
+                        return 1
+                    fi
+                fi
+            else
+                status_from_output "$output" "$OUTPUT_SELECTOR"
+            fi
+            return $?
+        fi
+        if [ "$attempt" -lt "$RETRIES" ]; then
+            sleep "$RETRY_INTERVAL"
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    cat "$error_file" >&2
+    printf 'UNKNOWN\n'
+    return 1
+}
+
+with_lock() {
+    exec 9>"$LOCK_FILE" || {
+        printf 'cannot open lock file: %s\n' "$LOCK_FILE" >&2
+        return 73
+    }
+    flock 9 || {
+        printf 'cannot acquire lock: %s\n' "$LOCK_FILE" >&2
+        exec 9>&-
+        return 75
+    }
+    "$@"
+    result=$?
+    flock -u 9 2>/dev/null || true
+    exec 9>&-
+    return "$result"
+}
+
+case "$1" in
+    on)
+        with_lock run_with_retry --on
+        ;;
+    off)
+        with_lock run_with_retry --off
+        ;;
+    status)
+        with_lock status
+        ;;
+    *)
+        usage
+        exit 64
+        ;;
+esac

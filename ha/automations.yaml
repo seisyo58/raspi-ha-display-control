@@ -1,0 +1,41 @@
+- id: raspi3_display_off_at_night
+  alias: "ラズパイ画面を夜間OFF"
+  triggers:
+    - trigger: time
+      at: "00:00:00"
+  actions:
+    - action: switch.turn_off
+      target:
+        entity_id: switch.raspi3_hdmi_display
+  mode: single
+
+- id: raspi3_display_on_in_morning
+  alias: "ラズパイ画面を朝ON"
+  triggers:
+    - trigger: time
+      at: "08:00:00"
+  actions:
+    - action: switch.turn_on
+      target:
+        entity_id: switch.raspi3_hdmi_display
+  mode: single
+
+- id: raspi3_display_resend_after_online
+  alias: "ラズパイ画面の状態を再送"
+  triggers:
+    - trigger: mqtt
+      topic: "home/raspi3/display/availability"
+      payload: "online"
+  conditions:
+    - condition: template
+      value_template: >-
+        {{ states('switch.raspi3_hdmi_display') in ['on', 'off'] }}
+  actions:
+    - action: mqtt.publish
+      data:
+        topic: "home/raspi3/display/hdmi/set"
+        payload: >-
+          {{ 'ON' if is_state('switch.raspi3_hdmi_display', 'on') else 'OFF' }}
+        qos: 1
+        retain: false
+  mode: restart
