@@ -12,8 +12,9 @@ Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectHome=true
+ProtectHome=read-only
 ProtectSystem=strict
+ReadWritePaths=/run/user/1000
 
 [Install]
 WantedBy=default.target

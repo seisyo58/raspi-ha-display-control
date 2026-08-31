@@ -20,7 +20,12 @@ fi
 case "$(cat "$state_file" 2>/dev/null || true)" in
     ON)
         printf 'HDMI-A-1 "Test display" (normal)\n'
+        printf '  Enabled: yes\n'
         printf '  1920x1080 60.000 Hz\n'
+        ;;
+    DISABLED)
+        printf 'HDMI-A-1 "Test display" (normal)\n'
+        printf '  Enabled: no\n'
         ;;
     *)
         printf 'NOOP-1 "Test display" (normal)\n'

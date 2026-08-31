@@ -157,16 +157,34 @@ status_from_output() {
     output="$1"
     output_name="$2"
 
-    # labwc may rename the disabled connector to NOOP-1. Treat that as OFF,
-    # but report an entirely missing connector as UNKNOWN (for example, a
-    # disconnected cable or an unavailable compositor).
-    if printf '%s\n' "$output" | awk -v output_name="$output_name" '
-        $1 == output_name { found = 1; exit }
-        END { exit !found }
-    '; then
-        printf 'ON\n'
-        return 0
-    fi
+    # Depending on the compositor, a disabled connector may either remain
+    # visible with "Enabled: no" or be represented by NOOP-1. Treat both as
+    # OFF, while reporting an entirely missing connector as UNKNOWN.
+    target_status=$(printf '%s\n' "$output" | awk -v output_name="$output_name" '
+        $1 == output_name { found = 1; next }
+        found && $1 == "Enabled:" { enabled = $2; exit }
+        END {
+            if (!found) {
+                print "MISSING"
+            } else if (enabled == "no") {
+                print "OFF"
+            } else {
+                # Older wlr-randr output may omit Enabled; presence then
+                # retains the historical ON interpretation.
+                print "ON"
+            }
+        }
+    ')
+    case "$target_status" in
+        ON)
+            printf 'ON\n'
+            return 0
+            ;;
+        OFF)
+            printf 'OFF\n'
+            return 0
+            ;;
+    esac
 
     if printf '%s\n' "$output" | awk '
         $1 == "NOOP-1" { found = 1 }
