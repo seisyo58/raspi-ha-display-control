@@ -41,6 +41,8 @@ export DISPLAY_OUTPUT_CACHE_FILE="$state_file.cache"
 rm -f "$DISPLAY_OUTPUT_CACHE_FILE"
 assert_state ON
 [ "$(cat "$DISPLAY_OUTPUT_CACHE_FILE")" = "HDMI-A-1" ]
+printf 'DISABLED\n' > "$state_file"
+assert_state OFF
 $root_dir/bin/display-control off
 assert_state OFF
 $root_dir/bin/display-control on

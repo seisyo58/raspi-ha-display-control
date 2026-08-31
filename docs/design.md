@@ -33,7 +33,7 @@ wlr-randr --output HDMI-A-1 --off
 wlr-randr --output HDMI-A-1 --on
 ```
 
-OFF にした後の `wlr-randr` の表示では、Wayland compositor 側の都合で対象出力が `NOOP-1` と表示されることがあります。したがって、状態確認は HDMI コネクタ名の存在だけで判断せず、操作結果と再確認結果を組み合わせます。
+OFF にした後の `wlr-randr` の表示では、Wayland compositor 側の都合で対象出力が `Enabled: no` のまま残る場合と、`NOOP-1` と表示される場合があります。したがって、状態確認は HDMI コネクタ名の存在だけで判断せず、`Enabled: no` / `NOOP-1` を OFF として扱い、対象出力が見つからない場合は `UNKNOWN` とします。
 
 ## 目的と範囲
 
@@ -165,7 +165,7 @@ HA 側では、`state_topic` を設定して command topic と状態を分離し
 - 成功・失敗を終了コードで呼び出し元に返す
 - 時刻による ON/OFF 判定は行わない。タイムゾーンは HA 側の自動化で管理する
 
-対象出力は `DISPLAY_OUTPUT` で指定します。`HDMI-A-1`、`HDMI-A-2`、`DP-1` などの実際の `wlr-randr` 出力名を設定できます。`auto` を指定した場合は、物理ディスプレイ出力が1つだけのときに自動選択し、選択した名前を `/run/user/1000/raspi-ha-display-control.output` に保存します。出力が複数ある場合は誤操作を避けるため `UNKNOWN` / 失敗とし、明示設定を要求します。出力OFF後に compositor が `NOOP-1` と表示しても、保存した物理出力名を使って再度ONにできます。
+対象出力は `DISPLAY_OUTPUT` で指定します。`HDMI-A-1`、`HDMI-A-2`、`DP-1` などの実際の `wlr-randr` 出力名を設定できます。`auto` を指定した場合は、物理ディスプレイ出力が1つだけのときに自動選択し、選択した名前を `/run/user/1000/raspi-ha-display-control.output` に保存します。出力が複数ある場合は誤操作を避けるため `UNKNOWN` / 失敗とし、明示設定を要求します。出力OFF後に compositor が対象出力を `Enabled: no` または `NOOP-1` と表示しても、保存した物理出力名を使って再度ONにできます。
 
 ### MQTT ブリッジ
 

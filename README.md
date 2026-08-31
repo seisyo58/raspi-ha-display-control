@@ -137,6 +137,8 @@ XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 \
   /opt/raspi-ha-display-control/bin/display-control status
 ```
 
+ディスプレイをOFFにした後の`wlr-randr`出力は、Wayland compositorの実装により、対象コネクタが`Enabled: no`のまま残る場合と`NOOP-1`として表示される場合があります。`display-control status`はどちらも`OFF`として扱い、対象コネクタ自体が見つからない場合は`UNKNOWN`を返します。
+
 出力が複数ある場合、`DISPLAY_OUTPUT=auto`は安全のため操作を実行しません。`wlr-randr`で正しい出力名を確認し、`mqtt.env`へ明示指定してください。
 
 ## Scope and limitations
