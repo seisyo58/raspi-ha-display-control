@@ -12,7 +12,6 @@ Pi上のMQTTブリッジがコマンドを受信し、`wlr-randr`でディスプ
 - コマンドの排他制御と不正payloadの拒否
 - 出力名の明示指定（例：`HDMI-A-1`、`DP-1`）
 - 物理出力が1つの場合の出力名自動検出（`DISPLAY_OUTPUT=auto`）
-- Raspberry Pi側に時刻スケジュールを持たず、制御をHome Assistantへ集約
 
 ## Requirements
 
@@ -24,8 +23,6 @@ Pi上のMQTTブリッジがコマンドを受信し、`wlr-randr`でディスプ
 - `paho-mqtt` 1.6以降
 - MQTT broker
 - Home Assistant MQTT integration
-
-現在確認している実機環境はRaspberry Pi 3、Raspbian GNU/Linux 13、Wayland/labwcです。
 
 ## Quick start
 
@@ -48,7 +45,7 @@ sudo chown pi:pi /etc/raspi-ha-display-control/mqtt.env
 sudo chmod 600 /etc/raspi-ha-display-control/mqtt.env
 ```
 
-`DISPLAY_OUTPUT`には実際の`wlr-randr`出力名を設定します。現在の実機では`HDMI-A-1`です。ディスプレイ出力が1つだけの環境では`auto`も利用できます。
+`DISPLAY_OUTPUT`には実際の`wlr-randr`出力名を設定します。ディスプレイ出力が1つだけの環境では`auto`も利用できます。
 
 ### 3. user serviceを起動
 
@@ -68,7 +65,7 @@ journalctl --user -u raspi-display-mqtt.service -f
 
 ### 4. Home Assistantへ登録
 
-[ha/mqtt-switch.yaml](ha/mqtt-switch.yaml)をMQTT integrationの設定へ追加します。夜間のON/OFFとPi再起動後の状態再送が必要な場合は、[ha/automations.yaml](ha/automations.yaml)も利用してください。
+[ha/mqtt-switch.yaml](ha/mqtt-switch.yaml)をMQTT integrationの設定へ追加します。Pi再起動後の状態再送が必要な場合は、[ha/automations.yaml](ha/automations.yaml)も利用してください。
 
 MQTT command topicはretainしません。Pi再起動後の復旧は、Home Assistantがavailabilityの`online`を検知して現在の状態を再送します。
 
@@ -145,7 +142,5 @@ XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 \
 ## Scope and limitations
 
 このプロジェクトはディスプレイ出力の表示・非表示だけを扱います。Raspberry Piの電源断・再起動、ディスプレイ本体の電源制御、解像度や回転の変更は対象外です。
-
-Pi側にcronやsystemd timerによる時刻制御を追加せず、スケジュールはHome Assistant側で管理してください。
 
 詳細なMQTT仕様、エラー時の扱い、受け入れ条件は[docs/design.md](docs/design.md)を参照してください。
